@@ -1,5 +1,5 @@
 """
-    服务器端
+    FedAvg 服务器端
 """
 
 import numpy as np
