@@ -1,5 +1,5 @@
 """
-    资料处理
+    FedAvg 资料处理
 """
 
 import sys
