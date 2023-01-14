@@ -1,5 +1,5 @@
 """
-    构建模型
+    FedAvg 构建模型
 """
 
 from tensorflow.keras.models import Sequential
