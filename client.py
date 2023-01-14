@@ -1,5 +1,5 @@
 """
-    FedTrimmed-mean客户端
+    FedTrimmed-mean 客户端
 """
 
 from data_process import dataSet
