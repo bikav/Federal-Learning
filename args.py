@@ -1,3 +1,7 @@
+"""
+    FedAvg args
+"""
+
 import argparse
 import torch
 
