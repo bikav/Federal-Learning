@@ -1,5 +1,5 @@
 """
-    客户端2
+    FedKS 客户端
 """
 
 from data_process import dataSet
