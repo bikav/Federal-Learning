@@ -1,5 +1,5 @@
 """
-    总控制台
+    FedAvg 总控制台
 """
 
 from args import args_parser
