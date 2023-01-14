@@ -1,17 +1,19 @@
 """
-    服务器端
+    FedKS 服务器端
 """
 
 import numpy as np
+import pandas as pd
 import sys
+from sklearn.metrics import roc_curve, auc
+from sklearn.preprocessing import label_binarize
+from scipy.stats import ks_2samp  # KS检验
 
 sys.path.append('../')
 from client import train, test
 from model import DNN
 
 np.set_printoptions(threshold=np.inf)  # 打印完整list
-
-clients_NB15 = ['NUSW-NB15-' + str(i) for i in range(1, 11)]
 
 
 class FedAvg:
@@ -43,6 +45,10 @@ class FedAvg:
             # 客户端模型更新
             self.client_update(index)
 
+            self.validation_set(self.args.B, index)
+
+            self.distribution_difference()
+
             # 更新服务器权重
             m = np.max([len(self.secure_server), 1])  # m = 剩余客户端的数量
             self.aggregation(m)
@@ -59,6 +65,71 @@ class FedAvg:
         """本地更新: 获取每个客户端的模型更新"""
         for k in index:
             self.nns[k] = train(self.args, self.nns[k], self.nns[k].file_name, k)
+
+    def validation_set(self, batch, index):
+        """服务器验证集"""
+        df = pd.read_csv('Dataset/Val.csv', encoding='gbk')
+
+        y = df[['dos', 'exploits', 'fuzzers', 'generic', 'normal', 'reconnaissance']]
+        X = df.drop(['dos', 'exploits', 'fuzzers', 'generic', 'normal', 'reconnaissance'], 1)
+        X = X.astype(np.float32)
+
+        # 数据集资料取整
+        data_len = int(len(X) / batch) * batch
+        X, y = X[:data_len], y[:data_len]
+
+        all_pred = []
+        for k in index:
+            pred = self.nns[k].predict(X)
+            all_pred.append(pred)
+
+        y = label_binarize(y, classes=[0, 1, 2, 3, 4, 5])
+
+        KS_value = []
+        for i in range(len(self.secure_server)):
+            fpr, tpr, thresholds = roc_curve(y.ravel(), all_pred[i].ravel())
+            ks_value = max(abs(fpr - tpr))
+            KS_value.append(ks_value)
+
+        print('KS_value:', KS_value)
+
+        KS_value = np.array(KS_value)
+        nonevil_index = np.where(KS_value > 0.5)
+        nonevil_index = list(nonevil_index)  # 转为list
+
+        secure_server = []
+        for i in nonevil_index[0]:
+            secure_server.append(self.secure_server[i])
+        self.secure_server = secure_server
+
+    def distribution_difference(self):
+        """检测与其他客户端权重数据分布差异过大的客户端"""
+        # KS检验得到"p-value"
+        pvas = []
+        for i in self.secure_server:
+            pva = []
+            for j in self.secure_server:
+                pvalue = ks_2samp(np.array(self.nns[i].get_weights()[0]).flatten(),
+                                  np.array(self.nns[j].get_weights()[0]).flatten()).pvalue
+                pva.append(pvalue)
+            pvas.append(pva)
+        print(len(pvas))
+
+        PVA_mean = []
+        for i in range(len(pvas)):
+            del pvas[i][i]
+            pva_mean = np.mean(pvas[i])
+            PVA_mean.append(pva_mean)
+        print('PVA_mean:', PVA_mean)
+
+        PVA_mean = np.array(PVA_mean)
+        nonevil_index = np.where(PVA_mean > 0.05)
+        nonevil_index = list(nonevil_index)  # 转为list
+
+        secure_server = []
+        for i in nonevil_index[0]:
+            secure_server.append(self.secure_server[i])
+        self.secure_server = secure_server
 
     def aggregation(self, m):
         """更新权重"""
@@ -80,11 +151,11 @@ class FedAvg:
 
     def global_test(self):
         model = self.nn
-        c = clients_NB15
+        c = ['NUSW-NB15-' + str(i + 1) for i in self.secure_server]
         Acc = 0
         for client in c:
             print('\n' + client + ':')
             model.file_name = client
             acc = test(self.args, model)
             Acc += acc
-        print('Total accuracy:', Acc / 10)
+        print('Total accuracy:', Acc / len(self.secure_server))
